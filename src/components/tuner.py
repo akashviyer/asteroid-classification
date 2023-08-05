@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from catboost import CatBoostClassifier
 from sklearn.ensemble import (
     AdaBoostClassifier,
-    RandomForestClassifier
+    RandomForestClassifier,
+    VotingClassifier
 )
 
 import pandas as pd
@@ -74,7 +75,7 @@ class ModelTuner:
                 'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 0.5,2,log=True),
                 'rsm': trial.suggest_float('rsm', 0.5, 1.0, log=True),
             }
-        elif model_name == 'Random Forest':
+        elif model_name == 'RandomForest':
             params = {
                 'random_state':RANDOM_SEED,
                 'n_estimators': trial.suggest_int('n_estimators', 50, 500, log=True),
@@ -115,7 +116,7 @@ class ModelTuner:
             clf = XGBClassifier(**params)
         elif model_name == 'CatBoost':
             clf = CatBoostClassifier(**params)
-        elif model_name == 'Random Forest':
+        elif model_name == 'RandomForest':
             clf = RandomForestClassifier(**params)
 
         predict_pipeline.steps.append((model_name, clf))
@@ -178,7 +179,7 @@ class ModelTuner:
             clf = XGBClassifier(**params)
         elif model_name == 'CatBoost':
             clf = CatBoostClassifier(**params)
-        elif model_name == 'Random Forest':
+        elif model_name == 'RandomForest':
             clf = RandomForestClassifier(**params)
         predict_pipeline.steps.append((model_name, clf))
 
@@ -209,35 +210,9 @@ class ModelTuner:
 
         mean_score = np.mean(scores)
         print(mean_score)
-        sum_confusion_matrix = np.sum(confusion_matrices, axis=0)
-
-        row_sums = sum_confusion_matrix.sum(axis=1, keepdims=True)
-        
-        average_confusion_matrix = (sum_confusion_matrix / row_sums)
-
         if display:
-            cm = plt.imshow(average_confusion_matrix, cmap=plt.cm.Blues, interpolation='nearest')
-            plt.colorbar()
-            class_names = ['A', 'C', 'D', 'L', 'Q','S', 'V', 'X']
-
-            for i in range(average_confusion_matrix.shape[0]):
-                for j in range(average_confusion_matrix.shape[1]):
-                    plt.text(j, i, f"{average_confusion_matrix[i, j]:.2f}",
-                        ha="center", va="center", color="black", fontsize=10)
-                    
-            ax = plt.gca()
-            ax.set_xticks(np.arange(len(class_names)))
-            ax.set_yticks(np.arange(len(class_names)))
-            ax.set_xticklabels(class_names)
-            ax.set_yticklabels(class_names)
-
-            plt.title(f'Averaged Confusion Matrix ({model_name})')
-            plt.xlabel("Predicted label")
-            plt.ylabel("True label")
-            plt.tight_layout()
-            plt.show()
-
-        return average_confusion_matrix, np.mean(scores)
+            display_cm(model_name, confusion_matrices)
+        return np.mean(scores)
 
     def tune(self, model_name, display):
         study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner(n_warmup_steps=10))
@@ -265,6 +240,91 @@ class ModelTuner:
             plt.show()
         
         return best_params, best_score, study
+    def ensemble(self, trial:Trial, model_names:list, model_cv_configs:dict):
+        train_df = get_train_df()
+        X, y = get_X_and_y(train_df, TARGET)
+        y = label_encode(y)
+
+        pipeline_dict = {}
+
+        for model_name in model_names:
+            configs = model_cv_configs[model_name]
+            smote = configs['smote']
+            smote_sampling_strategy = configs['smote_sampling_strategy']
+            under_sample = configs['under_sample']
+            params = configs['params']
+
+            predict_pipeline = Pipeline(steps=[
+                    ('Preprocessor', self.preprocessor),
+                    ('Fix Names', FunctionTransformer(clean_column_names)),
+                    ('Add Features', FunctionTransformer(feature_adder)),
+                ])
+            
+            if smote:
+                predict_pipeline.steps.append(('SMOTE', SMOTE(sampling_strategy=smote_sampling_strategy, k_neighbors=5)))
+            if under_sample:
+                predict_pipeline.steps.append(('Under Sample', RandomUnderSampler()))
+
+            if model_name == 'XGBoost':
+                clf = XGBClassifier(**params)
+            elif model_name == 'CatBoost':
+                clf = CatBoostClassifier(**params)
+            elif model_name == 'RandomForest':
+                clf = RandomForestClassifier(**params)
+
+            predict_pipeline.steps.append((model_name, clf))
+
+            
+            pipeline_dict[model_name] = predict_pipeline
+
+        scores = []
+        for train_index, test_index in self.cv.split(X, y):
+            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+            y_train, y_test = y[train_index], y[test_index]      
+            
+            model_preds = []
+            
+            for model_name in model_names:
+                model = pipeline_dict[model_name]
+                class_weight = model_cv_configs[model_name]['class_weight']
+
+                if class_weight:
+                    class_weights = compute_sample_weight(
+                    class_weight = class_weight,
+                    y=y_train
+            )
+                    model.fit(X_train, y_train, **{f'{model_name}__sample_weight': class_weights})
+                else:
+                    model.fit(X_train, y_train)
+                
+                preds = model.predict_proba(X_test)
+                
+                model_preds.append(preds)
+
+            model_preds = np.array(model_preds)
+
+            print(model_preds, '\n', np.shape(model_preds))
+
+            ensemble_weighted_preds = weighted_mean_arrays(trial, model_preds, model_names)
+
+            scores.append(roc_auc_score(y_test, ensemble_weighted_preds, multi_class='ovr'))
+        cv_score = np.mean(scores)
+        print(cv_score)
+        return cv_score       
+
+    def tune_ensemble(self):
+        study_ens = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner(n_warmup_steps=10))
+        study_ens.optimize(lambda trial: self.ensemble(trial, model_names = ['XGBoost', 'CatBoost', 'RandomForest'], model_cv_configs = model_cv_configs), n_trials=self.n_trials)
+
+        best_params = study_ens.best_params
+        best_score = study_ens.best_value
+
+        print(f'Best Score: {best_score}\n\
+              Best Params: {best_params}')
+        
+        logging.info(f'ENSEMBLE WEIGHTS\nScore: {best_score}\nParams:{best_params}\n')
+
+        return best_params, best_score
     
 transformer = DataTransformer(
     remove_cols=['pdes', 'class', 'class2', 'score', 'bad', 'neo', 'rot_per', 'mean_anomaly', 'abs_mag', 'peri', 'asc_node_long'],
@@ -278,7 +338,7 @@ transformer = DataTransformer(
 
 preprocessor = transformer.establish_pipeline()
 
-MT = ModelTuner(130, preprocessor, StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED))
+MT = ModelTuner(25, preprocessor, StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED))
 
 #params, score, study = MT.tune('XGBoost', display=True)
 
@@ -305,9 +365,6 @@ best_class_weights = { #this is for class weighting
 }
 
 
-#MT.cv_matrix('Random Forest', class_weight=None, params = {}, 
-#                  smote=True, smote_sampling_strategy='auto', under_sample=False, display=True)
-
 best_xgb_params = {
     'objective': 'multi:softprob',
     'random_state': RANDOM_SEED,
@@ -320,8 +377,35 @@ best_xgb_params = {
 
 best_catboost_params = {'learning_rate': 0.01, 'n_estimators': 512, 'max_depth': 8, 'l2_leaf_reg': 0.5433106820990699, 'rsm': 0.6973423627892332}
 best_randomforest_params = {'n_estimators': 462, 'max_depth': 10, 'min_samples_leaf': 6, 'min_samples_split': 15} # SMOTE K=24
-MT.tune('Random Forest', True) # trained with balanced smote
 
 
+#MT.cv_matrix('XGBoost', class_weight=None, params = best_xgb_params, 
+                  #smote=True, smote_sampling_strategy=sample_strat, under_sample=False, display=True)
 
+#MT.cv_matrix('CatBoost', class_weight=None, params = best_catboost_params, 
+                  #smote=False, smote_sampling_strategy='auto', under_sample=False, display=True)
 
+# MT.cv_matrix('RandomForest', class_weight='balanced', params = best_randomforest_params, 
+#                   smote=False, smote_sampling_strategy='auto', under_sample=False, display=True)
+
+model_cv_configs = {
+    'XGBoost': {'class_weight':None,
+                'params':best_xgb_params,
+                'smote':True,
+                'smote_sampling_strategy':sample_strat,
+                'under_sample':False},
+
+    'CatBoost': {'class_weight':'balanced',
+                'params':best_catboost_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'under_sample':False},
+
+    'RandomForest': {'class_weight':'balanced',
+                'params':best_randomforest_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'under_sample':False}
+}
+
+MT.tune_ensemble()

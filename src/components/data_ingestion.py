@@ -35,6 +35,8 @@ class DataIngestion:
         df['class1'] = df['class'].str[0]
         df['class2'] = df['class'].str[-1]
 
+        df = df[~df['class'].str.contains('O')]
+
         return df
 
     def initiate_data_ingestion(self):

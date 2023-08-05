@@ -12,6 +12,10 @@ from src.exception import CustomException
 
 from sklearn.preprocessing import FunctionTransformer, StandardScaler, MinMaxScaler, PolynomialFeatures, LabelEncoder
 
+import matplotlib.pyplot as plt
+
+from optuna import Trial
+
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 
@@ -31,6 +35,7 @@ def specific_nn_generator(input_dim, num_outputs):
     def create_nn():
         model = Sequential()
         model.add(Dense(64, input_dim=input_dim, activation='relu'))
+        model.add()
         model.add(Dense(64, activation='relu'))
         model.add(Dense(num_outputs, activation='softmax'))
         model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
@@ -119,5 +124,53 @@ def get_sample_ratio(cat, ratio, round=True, df='train'):
         df = get_train_df()
         X, y = get_X_and_y(df=df, target_name=TARGET)
         
-
         return int(np.round((y == cat).sum() * ratio))
+
+def mean_arrs(preds_arr):
+    return np.mean(preds_arr, axis=0)
+
+def weighted_mean_arrays(trial:Trial, arrays, model_names):
+    weights = []
+    leftover_weight = 0.99
+    for i in range(len(model_names) - 1):
+        weight = trial.suggest_float(f'model{model_names[i]}', 0.01, leftover_weight)
+        weights.append(weight)
+        leftover_weight -= weight
+
+    weights.append(1-sum(weights))
+    weighted_arrays = [arr * weight for arr, weight in zip(arrays, weights)]
+    weighted_mean = np.sum(weighted_arrays, axis=0)
+    weighted_mean /= weighted_mean.sum(axis=1, keepdims=True)
+    
+    return weighted_mean
+
+
+
+
+def display_cm(model_name, confusion_matrices):
+    sum_confusion_matrix = np.sum(confusion_matrices, axis=0)
+
+    row_sums = sum_confusion_matrix.sum(axis=1, keepdims=True)
+        
+    average_confusion_matrix = (sum_confusion_matrix / row_sums)
+
+    cm = plt.imshow(average_confusion_matrix, cmap=plt.cm.Blues, interpolation='nearest')
+    plt.colorbar()
+
+    for i in range(average_confusion_matrix.shape[0]):
+        for j in range(average_confusion_matrix.shape[1]):
+            plt.text(j, i, f"{average_confusion_matrix[i, j]:.2f}",
+                ha="center", va="center", color="black", fontsize=10)
+            
+    ax = plt.gca()
+    ax.set_xticks(np.arange(len(CLASS_LABELS)))
+    ax.set_yticks(np.arange(len(CLASS_LABELS)))
+    ax.set_xticklabels(CLASS_LABELS)
+    ax.set_yticklabels(CLASS_LABELS)
+
+    plt.title(f'Averaged Confusion Matrix ({model_name})')
+    plt.xlabel("Predicted label")
+    plt.ylabel("True label")
+    plt.tight_layout()
+    plt.show()
+

@@ -50,11 +50,11 @@ class ModelDeployerConfig:
     transformer = transformer
     preprocessor = preprocessor
     models = {
-        #'CatBoost' : CatBoostClassifier(verbose=False, random_state=RANDOM_SEED),
+        'CatBoost' : CatBoostClassifier(verbose=False, random_state=RANDOM_SEED),
         #'Decision Tree' : DecisionTreeClassifier(random_state=RANDOM_SEED),
         'XGBoost' : XGBClassifier(objective='multi:softprob', tree_method='hist', enable_categorical=True, random_state=RANDOM_SEED),
         #'Adaboost' : AdaBoostClassifier(n_estimators=75, learning_rate=0.75, random_state=RANDOM_SEED),
-        #'Random Forest' : RandomForestClassifier(random_state=RANDOM_SEED),
+        'Random Forest' : RandomForestClassifier(random_state=RANDOM_SEED),
         #'KNN': KNeighborsClassifier(),
         #'ANN' : KerasClassifier(build_fn=specific_nn_generator(len(transformer.feature_list), len(np.unique(y))), epochs=5, batch_size=32)
     }
