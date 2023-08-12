@@ -25,7 +25,7 @@ set_config(transform_output="pandas")
 
 @dataclass
 class DataTransformerConfig:
-    preprocessor_obj_file_path: str = os.path.join('artifacts', 'preprocessor.pkl')
+    preprocessor_obj_file_path: str = os.path.join('project', 'artifacts', 'preprocessor.pkl')
 
 class DataTransformer:
     def __init__(self, add_features=True, excluded_features=[], target_name=TARGET, remove_cols=[], num_imputer='None', scaling='None', cat_encoding='None'):
@@ -99,34 +99,11 @@ class DataTransformer:
     
     def save_transform(self):
         try:
-            train = get_train_df()
-            test = get_test_df()
-
-            if self.remove_cols:
-                    train = train.drop(self.remove_cols, axis=1)
-                    test = test.drop(self.remove_cols, axis=1)
-
-            train_X, train_y = train.drop(self.target_name, axis=1), train[self.target_name]
-
-            test_X, test_y = test.drop(self.target_name, axis=1), test[self.target_name]
-
-            logging.info('Train and test data read-in as dataframes, and train split into X and y')
-
             logging.info('Initializing preprocessor')
 
             preprocessor = self.establish_pipeline()
 
             logging.info('Preprocessor initialized')
-
-            transformed_X_train = preprocessor.fit_transform(train_X, train_y)
-            transformed_X_test = preprocessor.transform(test_X)
-
-            train_arr = np.c_[
-                transformed_X_train, np.array(train_y)
-            ]
-            test_arr = np.c_[
-                transformed_X_test, np.array(test_y)
-                ]
 
             save_object(
                     file_path=self.config.preprocessor_obj_file_path,
@@ -134,22 +111,18 @@ class DataTransformer:
                 )
             
             logging.info('Preprocessor object saved')
-
-            return (
-                train_arr,
-                test_arr,
-                self.config.preprocessor_obj_file_path
-            )
         
         except Exception as e:
             raise CustomException(e, sys)
 
 data_transformer = DataTransformer(
-    target_name = 'class1',
-    remove_cols = ['pdes', 'class', 'class2', 'score', 'bad', 'neo'],
-    num_imputer = 'mean',
-    scaling = 'standard',
-    cat_encoding = 'ohe'
+    remove_cols=['pdes', 'class', 'class2', 'score', 'bad', 'neo', 'rot_per', 'mean_anomaly', 'abs_mag', 'peri', 'asc_node_long'],
+    target_name = 'class1', 
+    num_imputer='iterative', 
+    scaling='standard', 
+    cat_encoding='ohe',
+    add_features=True,
+    excluded_features = []
 )
 
-#train_input, test_input, filepath = data_transformer.save_transform()
+data_transformer.save_transform()

@@ -6,7 +6,6 @@ from catboost import CatBoostClassifier
 from sklearn.ensemble import (
     AdaBoostClassifier,
     RandomForestClassifier,
-    VotingClassifier
 )
 
 import pandas as pd
@@ -159,7 +158,7 @@ class ModelTuner:
 
         return np.mean(scores)
 
-    def cv_matrix(self, model_name, class_weight='balanced', params = {}, 
+    def cv_matrix(self, model_name, class_weight=None, params = {}, 
                   smote=False, smote_sampling_strategy='auto', under_sample=False, display=True):
         train_df = get_train_df()
         X, y = get_X_and_y(train_df, TARGET)
@@ -171,7 +170,7 @@ class ModelTuner:
                 ('Add Features', FunctionTransformer(feature_adder)),
             ])
         if smote:
-            predict_pipeline.steps.append(('SMOTE', SMOTE(sampling_strategy=smote_sampling_strategy, k_neighbors=5)))
+            predict_pipeline.steps.append(('SMOTE', SMOTE(sampling_strategy=smote_sampling_strategy, k_neighbors=24)))
         if under_sample:
             predict_pipeline.steps.append(('Under Sample', RandomUnderSampler()))
 
@@ -210,6 +209,7 @@ class ModelTuner:
 
         mean_score = np.mean(scores)
         print(mean_score)
+
         if display:
             display_cm(model_name, confusion_matrices)
         return np.mean(scores)
@@ -218,7 +218,7 @@ class ModelTuner:
         study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner(n_warmup_steps=10))
 
         smote='auto' # dict or 'auto'
-        class_weight=None # list or 'balanced'
+        class_weight=None # list or 'balanced' or None if smote is defined
 
         study.optimize(lambda trial: self.objective(trial, model_name, smote, class_weight), n_trials=self.n_trials)
 
@@ -249,8 +249,11 @@ class ModelTuner:
 
         for model_name in model_names:
             configs = model_cv_configs[model_name]
+
             smote = configs['smote']
-            smote_sampling_strategy = configs['smote_sampling_strategy']
+            smote_sample_counts = configs['smote_sampling_strategy']
+            smote_k = configs['smote_k']
+
             under_sample = configs['under_sample']
             params = configs['params']
 
@@ -261,7 +264,7 @@ class ModelTuner:
                 ])
             
             if smote:
-                predict_pipeline.steps.append(('SMOTE', SMOTE(sampling_strategy=smote_sampling_strategy, k_neighbors=5)))
+                predict_pipeline.steps.append(('SMOTE', SMOTE(sampling_strategy=smote_sample_counts, k_neighbors=smote_k)))
             if under_sample:
                 predict_pipeline.steps.append(('Under Sample', RandomUnderSampler()))
 
@@ -303,13 +306,23 @@ class ModelTuner:
 
             model_preds = np.array(model_preds)
 
-            print(model_preds, '\n', np.shape(model_preds))
-
-            ensemble_weighted_preds = weighted_mean_arrays(trial, model_preds, model_names)
+            if trial:
+                ensemble_weighted_preds = weight_mean_arrays(trial, model_preds, model_names)
+            else:
+                ensemble_weighted_preds = agg_weighted_arrs(model_preds)
 
             scores.append(roc_auc_score(y_test, ensemble_weighted_preds, multi_class='ovr'))
+
         cv_score = np.mean(scores)
+
+        log_string = f'cv_score:{cv_score}\nConfigs\n'
+
+        for key, value in configs.items():
+            log_string += f'{key}:{value}\n'
+
+        logging.info(log_string)
         print(cv_score)
+        
         return cv_score       
 
     def tune_ensemble(self):
@@ -379,33 +392,151 @@ best_catboost_params = {'learning_rate': 0.01, 'n_estimators': 512, 'max_depth':
 best_randomforest_params = {'n_estimators': 462, 'max_depth': 10, 'min_samples_leaf': 6, 'min_samples_split': 15} # SMOTE K=24
 
 
-#MT.cv_matrix('XGBoost', class_weight=None, params = best_xgb_params, 
-                  #smote=True, smote_sampling_strategy=sample_strat, under_sample=False, display=True)
+# MT.cv_matrix('XGBoost', class_weight=None, params = best_xgb_params, 
+#                  smote=True, smote_sampling_strategy='auto', under_sample=False)
 
-#MT.cv_matrix('CatBoost', class_weight=None, params = best_catboost_params, 
-                  #smote=False, smote_sampling_strategy='auto', under_sample=False, display=True)
+# MT.cv_matrix('CatBoost', class_weight=None, params = best_catboost_params, 
+#                  smote=False, smote_sampling_strategy='auto', under_sample=False, display=True)
 
-# MT.cv_matrix('RandomForest', class_weight='balanced', params = best_randomforest_params, 
-#                   smote=False, smote_sampling_strategy='auto', under_sample=False, display=True)
+# MT.cv_matrix('RandomForest', class_weight=None, params = best_randomforest_params, 
+#                   smote=False, smote_sampling_strategy=RANDOMFOREST_SMOTE_STRAT, under_sample=False, display=True)
 
 model_cv_configs = {
     'XGBoost': {'class_weight':None,
                 'params':best_xgb_params,
                 'smote':True,
-                'smote_sampling_strategy':sample_strat,
+                'smote_sampling_strategy':'auto',
+                'smote_k':5,
                 'under_sample':False},
 
     'CatBoost': {'class_weight':'balanced',
                 'params':best_catboost_params,
                 'smote':False,
                 'smote_sampling_strategy':'auto',
+                'smote_k': 5,
+                'under_sample':False},
+
+    'RandomForest': {'class_weight':None,
+                'params':best_randomforest_params,
+                'smote':True,
+                'smote_sampling_strategy':sample_strat,
+                'smote_k':24,
+                'under_sample':False}
+}
+model_cv_configs2 = {
+    'XGBoost': {'class_weight':None,
+                'params':best_xgb_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k':5,
+                'under_sample':False},
+
+    'CatBoost': {'class_weight':None,
+                'params':best_catboost_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k': 5,
+                'under_sample':False},
+
+    'RandomForest': {'class_weight':None,
+                'params':best_randomforest_params,
+                'smote':False,
+                'smote_sampling_strategy':sample_strat,
+                'smote_k':24,
+                'under_sample':False}
+}
+model_cv_configs3 = {
+    'XGBoost': {'class_weight':None,
+                'params':best_xgb_params,
+                'smote':True,
+                'smote_sampling_strategy':'auto',
+                'smote_k':10,
+                'under_sample':False},
+
+    'CatBoost': {'class_weight':None,
+                'params':best_catboost_params,
+                'smote':True,
+                'smote_sampling_strategy':'auto',
+                'smote_k': 10,
+                'under_sample':False},
+
+    'RandomForest': {'class_weight':None,
+                'params':best_randomforest_params,
+                'smote':True,
+                'smote_sampling_strategy':sample_strat,
+                'smote_k':24,
+                'under_sample':False}
+}
+model_cv_configs4 = {
+    'XGBoost': {'class_weight':'balanced',
+                'params':best_xgb_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k':10,
+                'under_sample':False},
+
+    'CatBoost': {'class_weight':'balanced',
+                'params':best_catboost_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k': 10,
                 'under_sample':False},
 
     'RandomForest': {'class_weight':'balanced',
                 'params':best_randomforest_params,
                 'smote':False,
-                'smote_sampling_strategy':'auto',
+                'smote_sampling_strategy':sample_strat,
+                'smote_k':24,
                 'under_sample':False}
 }
 
-MT.tune_ensemble()
+model_cv_configs4 = {
+    'XGBoost': {'class_weight':'balanced',
+                'params':best_xgb_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k':10,
+                'under_sample':False},
+
+    'CatBoost': {'class_weight':None,
+                'params':best_catboost_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k': 10,
+                'under_sample':False},
+
+    'RandomForest': {'class_weight':'balanced',
+                'params':best_randomforest_params,
+                'smote':False,
+                'smote_sampling_strategy':sample_strat,
+                'smote_k':24,
+                'under_sample':False}
+}
+model_cv_configs5 = {
+    'XGBoost': {'class_weight':None,
+                'params':best_xgb_params,
+                'smote':True,
+                'smote_sampling_strategy':'auto',
+                'smote_k':10,
+                'under_sample':False},
+
+    'CatBoost': {'class_weight':None,
+                'params':best_catboost_params,
+                'smote':False,
+                'smote_sampling_strategy':'auto',
+                'smote_k': 10,
+                'under_sample':False},
+
+    'RandomForest': {'class_weight':None,
+                'params':best_randomforest_params,
+                'smote':True,
+                'smote_sampling_strategy':sample_strat,
+                'smote_k':24,
+                'under_sample':False}
+}
+
+MT.ensemble(None, IMPLEMENTED_MODELS, model_cv_configs)
+MT.ensemble(None, IMPLEMENTED_MODELS, model_cv_configs2)
+MT.ensemble(None, IMPLEMENTED_MODELS, model_cv_configs3)
+MT.ensemble(None, IMPLEMENTED_MODELS, model_cv_configs4)
+MT.ensemble(None, IMPLEMENTED_MODELS, model_cv_configs5)

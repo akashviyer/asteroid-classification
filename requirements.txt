@@ -3,8 +3,10 @@ numpy
 seaborn
 matplotlib
 scikit-learn
+imblearn
 catboost
 xgboost
 scikeras
 optuna
+flask
 -e .

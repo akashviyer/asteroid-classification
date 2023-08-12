@@ -31,6 +31,13 @@ def save_object(file_path, obj):
     except Exception as e:
         raise CustomException(e, sys)
 
+def load_object(file_path):
+    try:
+        with open(file_path, 'rb') as file_obj:
+            return pickle.load(file_obj)
+    except Exception as e:
+        raise CustomException(e, sys)
+
 def specific_nn_generator(input_dim, num_outputs):
     def create_nn():
         model = Sequential()
@@ -119,7 +126,7 @@ def label_encode(s):
     le = LabelEncoder()
     return le.fit_transform(s)
 
-def get_sample_ratio(cat, ratio, round=True, df='train'):
+def get_sample_ratio(cat, ratio, df='train'):
     if df == 'train':
         df = get_train_df()
         X, y = get_X_and_y(df=df, target_name=TARGET)
@@ -129,7 +136,7 @@ def get_sample_ratio(cat, ratio, round=True, df='train'):
 def mean_arrs(preds_arr):
     return np.mean(preds_arr, axis=0)
 
-def weighted_mean_arrays(trial:Trial, arrays, model_names):
+def weight_mean_arrays(trial:Trial, arrays, model_names):
     weights = []
     leftover_weight = 0.99
     for i in range(len(model_names) - 1):
@@ -144,8 +151,16 @@ def weighted_mean_arrays(trial:Trial, arrays, model_names):
     
     return weighted_mean
 
+def agg_weighted_arrs(arrays):
+    sum_so_far = None
 
-
+    for arr in arrays:
+        if sum_so_far is None:
+            sum_so_far = arr
+        else:
+            sum_so_far += arr
+        
+    return sum_so_far / len(arrays)
 
 def display_cm(model_name, confusion_matrices):
     sum_confusion_matrix = np.sum(confusion_matrices, axis=0)
@@ -174,3 +189,5 @@ def display_cm(model_name, confusion_matrices):
     plt.tight_layout()
     plt.show()
 
+def get_str_label(num):
+    return LABEL_ENCODE_MAP[num[0]]
