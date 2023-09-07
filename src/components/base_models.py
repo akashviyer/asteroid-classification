@@ -29,6 +29,7 @@ from data_transformation import DataTransformer
 from src.utils import *
 from src.config import *
 
+# Initialize the data transformer
 transformer = DataTransformer(
     remove_cols=['pdes', 'class', 'class2', 'score', 'bad', 'neo', 'rot_per', 'mean_anomaly', 'abs_mag', 'peri', 'asc_node_long'],
     target_name = 'class1', 
@@ -43,6 +44,9 @@ preprocessor = transformer.establish_pipeline()
 
 @dataclass
 class ModelDeployerConfig:
+    """
+    Configuration class for the ModelDeployer.
+    """
     train_df = get_train_df()
 
     X, y = get_X_and_y(train_df, TARGET)
@@ -51,21 +55,29 @@ class ModelDeployerConfig:
     preprocessor = preprocessor
     models = {
         'CatBoost' : CatBoostClassifier(verbose=False, random_state=RANDOM_SEED),
-        #'DecisionTree' : DecisionTreeClassifier(random_state=RANDOM_SEED),
+        # 'DecisionTree' : DecisionTreeClassifier(random_state=RANDOM_SEED),
         'XGBoost' : XGBClassifier(objective='multi:softprob', tree_method='hist', enable_categorical=True, random_state=RANDOM_SEED),
-        #'Adaboost' : AdaBoostClassifier(n_estimators=75, learning_rate=0.75, random_state=RANDOM_SEED),
+        # 'Adaboost' : AdaBoostClassifier(n_estimators=75, learning_rate=0.75, random_state=RANDOM_SEED),
         'RandomForest' : RandomForestClassifier(random_state=RANDOM_SEED),
-        #'KNN': KNeighborsClassifier(),
-        #'ANN' : KerasClassifier(build_fn=specific_nn_generator(len(transformer.feature_list), len(np.unique(y))), epochs=5, batch_size=32)
+        # 'KNN': KNeighborsClassifier(),
+        # 'ANN' : KerasClassifier(build_fn=specific_nn_generator(len(transformer.feature_list), len(np.unique(y))), epochs=5, batch_size=32)
     }
     cv = StratifiedKFold(n_splits=5, shuffle=True)
 
 
 class ModelDeployer:
+    """
+    A class for deploying and evaluating machine learning models.
+    """
     def __init__(self):
         self.config = ModelDeployerConfig()
 
     def cv_models(self):
+        """
+        Perform cross-validation for different machine learning models.
+
+        :return: Dictionary containing model names and their cross-validation scores.
+        """
         model_cv_scores = {}
 
         predict_pipeline = Pipeline(steps=[
@@ -97,6 +109,9 @@ class ModelDeployer:
         return model_cv_scores
 
     def plot_model_mean_performance(self):
+        """
+        Plot the mean performance of different machine learning models.
+        """
         model_scores = self.cv_models()
         model_names = model_scores.keys()
         cv_scores = model_scores.values()
@@ -114,6 +129,15 @@ class ModelDeployer:
         plt.show()
     
     def plot_feature_importance(self, model_name, display=True, ax=None, add_noise=False):
+        """
+        Plot feature importance for a specific model.
+
+        :param model_name: The name of the model.
+        :param display: Whether to display the plot.
+        :param ax: The axis to use for plotting.
+        :param add_noise: Whether to add noise to the data.
+        :return: The feature importance plot.
+        """
         model = self.config.models[model_name]
         predict_pipeline = Pipeline(steps=[
             ('Preprocessor', self.config.preprocessor),
@@ -159,6 +183,13 @@ class ModelDeployer:
         return fi
     
     def plot_all_model_importances(self, add_noise=False, save_figure=False):
+        """
+        Plot feature importance for all models.
+
+        :param add_noise: Whether to add noise to the data.
+        :param save_figure: Whether to save the figure.
+        :return: The feature importance plots.
+        """
         model_names = list(self.config.models.keys())
         try:
             model_names.remove('ANN')

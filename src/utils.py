@@ -20,6 +20,14 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 
 def save_object(file_path, obj):
+    """
+    Save an object to a file using pickle.
+
+    :param file_path: The path to the file where the object will be saved.
+    :param obj: The object to be saved.
+    :raises CustomException: If there's an error while saving the object.
+    """
+
     try:
         dir_path = os.path.dirname(file_path)
 
@@ -32,6 +40,13 @@ def save_object(file_path, obj):
         raise CustomException(e, sys)
 
 def load_object(file_path):
+    """
+    Load an object from a file using pickle.
+
+    :param file_path: The path to the file from which the object will be loaded.
+    :return: The loaded object.
+    :raises CustomException: If there's an error while loading the object.
+    """
     try:
         with open(file_path, 'rb') as file_obj:
             return pickle.load(file_obj)
@@ -39,6 +54,13 @@ def load_object(file_path):
         raise CustomException(e, sys)
 
 def specific_nn_generator(input_dim, num_outputs):
+    """
+    Generate a specific neural network model.
+
+    :param input_dim: The input dimension.
+    :param num_outputs: The number of output units.
+    :return: A Keras Sequential model.
+    """
     def create_nn():
         model = Sequential()
         model.add(Dense(64, input_dim=input_dim, activation='relu'))
@@ -98,8 +120,9 @@ def feature_adder(X):
     numerical_df['orbital_period^2'] = df['osc_semimaj_ax']  ** 3
     numerical_df['semimaj_times_inclin'] = df['osc_semimaj_ax'] * df['osc_inclin']
 
-    #numerical_df['radius^2'] = (df['diameter'] / 2) ** 2
-    #numerical_df['semimaj_times_inclin^2'] = numerical_df['semimaj_times_inclin'] ** 2
+    # Below are more features I tested out, but didn't end up helping the model
+    # numerical_df['radius^2'] = (df['diameter'] / 2) ** 2
+    # numerical_df['semimaj_times_inclin^2'] = numerical_df['semimaj_times_inclin'] ** 2
     # numerical_df['diam_times_orbital_period^2'] = df['diameter'] * numerical_df['orbital_period^2']
     # numerical_df['semimaj_times_orbital_period^2'] = df['osc_semimaj_ax'] * numerical_df['orbital_period^2']
     # numerical_df['albedo_times_orbital_period^2'] = df['albedo'] * numerical_df['orbital_period^2']

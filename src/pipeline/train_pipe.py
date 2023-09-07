@@ -27,11 +27,26 @@ from src.exception import CustomException
 set_config(transform_output="pandas")
 
 class ModelEnsemble:
+    """
+    A class for creating an ensemble of fitted models.
+    """
     def __init__(self, fitted_models, model_weights):
+        """
+        Initialize the ModelEnsemble.
+
+        :param fitted_models: A dictionary of fitted models.
+        :param model_weights: A dictionary of model weights.
+        """
         self.fitted_models = fitted_models
         self.model_weights = model_weights
 
     def predict_proba(self, data):
+        """
+        Predict probabilities for each class label for input data.
+
+        :param data: The input data.
+        :return: Predicted probabilities.
+        """
         model_names = list(self.fitted_models.keys())
         
         agg_probs = None
@@ -50,10 +65,12 @@ class ModelEnsemble:
         return agg_probs
             
     def predict(self, data):
-        '''
-        Predicts target variable for input data,
-        using ensemble based on specifications
-        '''
+        """
+        Predicts target variable for input data.
+
+        :param data: The input data.
+        :return: Predicted target values.
+        """
         predict_proba_output = self.predict_proba(data)
 
         preds = np.argmax(predict_proba_output, axis=1)
@@ -61,7 +78,16 @@ class ModelEnsemble:
         return preds
 
 class ModelEnsembler:
+    """
+    A class for training and saving an ensemble of models.
+    """
     def __init__(self, model_names:list, model_configs:dict):
+        """
+        Initialize the ModelEnsembler.
+
+        :param model_names: A list of model names.
+        :param model_configs: A dictionary of model configurations.
+        """
         self.model_names = model_names
         self.model_configs = model_configs
         self.preprocessor_filepath = os.path.join('project', 'artifacts', 'preprocessor.pkl')
@@ -69,6 +95,11 @@ class ModelEnsembler:
         self.ensemble_filepath = os.path.join('project', 'artifacts', 'ensemble.pkl')
 
     def assemble_pipelines(self):
+        """
+        Assemble prediction pipelines for each model.
+
+        :return: A dictionary of model pipelines.
+        """
         pipeline_dict = {}
 
         for model_name in self.model_names:
@@ -107,6 +138,11 @@ class ModelEnsembler:
         return pipeline_dict
     
     def train_pipelines(self):
+        """
+        Train prediction pipelines for each model.
+
+        :return: A dictionary of fitted models.
+        """
         train_df = get_train_df()
         X, y = get_X_and_y(train_df, TARGET)
         y = label_encode(y)
@@ -134,6 +170,11 @@ class ModelEnsembler:
         return fitted_models
         
     def save_ensemble(self):
+        """
+        Train and save the ensemble of models.
+
+        :return: The filepath to the saved ensemble.
+        """
         fitted_models = self.train_pipelines()
         model_weights = self.model_configs['model_weights']
 
@@ -142,6 +183,3 @@ class ModelEnsembler:
         save_object(self.ensemble_filepath, ensemble)
 
         return self.ensemble_filepath
-
-#ModelEnsembler(IMPLEMENTED_MODELS, model_configs=BEST_MODEL_CONFIGS).save_ensemble()
-
