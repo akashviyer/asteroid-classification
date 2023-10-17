@@ -28,7 +28,7 @@ class PredictPipeline:
         :return: Predicted labels or probabilities.
         """
         try:
-            model_path = os.path.join('project', 'artifacts', 'ensemble.pkl')
+            model_path = os.path.join('artifacts', 'ensemble.pkl')
             model = load_object(file_path=model_path)
             if not predict_proba:
                 preds = model.predict(features)

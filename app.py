@@ -1,4 +1,5 @@
 from flask import Flask, request, render_template
+import webbrowser
 from src.pipeline.train_pipe import ModelEnsemble
 from src.pipeline.predict_pipe import CustomData, PredictPipeline
 app=Flask(__name__)
@@ -27,5 +28,8 @@ def predict_datapoint():
 
 application = app
 
+url = "http://localhost:5000/asteroid-classification"
+
 if __name__ == '__main__':
-    application.run(host="0.0.0.0", debug=True)
+    webbrowser.open(url, new=0)
+    application.run(host="0.0.0.0", debug=False)

@@ -90,9 +90,9 @@ class ModelEnsembler:
         """
         self.model_names = model_names
         self.model_configs = model_configs
-        self.preprocessor_filepath = os.path.join('project', 'artifacts', 'preprocessor.pkl')
+        self.preprocessor_filepath = os.path.join('artifacts', 'preprocessor.pkl')
         self.preprocessor = load_object(self.preprocessor_filepath)
-        self.ensemble_filepath = os.path.join('project', 'artifacts', 'ensemble.pkl')
+        self.ensemble_filepath = os.path.join('artifacts', 'ensemble.pkl')
 
     def assemble_pipelines(self):
         """
